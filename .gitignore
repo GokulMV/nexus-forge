@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Nexus Forge run artifacts (generated locally, not committed)
+timelines.json
+report.md
+surface.json
+verdicts.json
+/harness/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/

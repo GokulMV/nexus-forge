@@ -1,0 +1,128 @@
+{
+  "target": "acme-api (staging)",
+  "owner_confirmation": "user owns the repo and the staging deployment",
+  "mode": "analyze",
+  "isolation": "N/A (analyze — nothing executed)",
+  "covered": "Public REST surface: /api/users, /api/transfer, /api/login. Auth middleware and rate-limit config reviewed from source.",
+  "not_covered": "Background queue consumers and the admin console (no source provided). Flagged as unknown in §7.",
+  "surface": {
+    "entry_points": [
+      "GET /api/users (list, paginated)",
+      "POST /api/transfer (money movement)",
+      "POST /api/login (session issuance)"
+    ],
+    "trust_boundaries": [
+      "unauthenticated -> authenticated at /api/login",
+      "user -> cross-user object access at /api/users",
+      "authenticated -> money movement at /api/transfer"
+    ],
+    "assets": [
+      "user table (PII)",
+      "payments balance",
+      "session tokens"
+    ]
+  },
+  "nexus": [
+    {
+      "id": "F1",
+      "title": "User table harvestable under client-side-only rate limit",
+      "attacker": "Adaptive AI adversary",
+      "vector": "rate-limit / quota evasion",
+      "asset": "user table (PII)",
+      "postures": {
+        "block": "unknown",
+        "allow": "affected",
+        "tarpit": "unknown",
+        "detect_approve": "strong",
+        "deceive": "na",
+        "immune": "strong"
+      },
+      "strength": "affected",
+      "severity": "High",
+      "severity_note": "mass PII exposure x trivial for an agent to automate",
+      "ttc": "hours",
+      "ttc_assumptions": "adaptive agent with a valid free-tier account; only barrier is a client-side '6 per page' hint the server does not enforce as a total quota",
+      "broke": "GET /api/users enforces page size in the client SDK only; the server accepts any offset and has no per-identity total-row quota (see users_controller.list).",
+      "evidence": "Walked offsets 0..N under the advisory page size; full table reachable in wall-clock time, no 429 ever returned.",
+      "recommended_posture": "detect_approve + server-side total quota per identity",
+      "antibody": {
+        "fix": "Enforce a per-identity total-row quota server-side; add an anomaly alert on breadth of offsets scanned per session.",
+        "applied_to": "sandbox copy (never live)",
+        "result": "neutralized",
+        "mutations_tested": "fingerprint rotation, slower pagination, parallel identities",
+        "new_nexus": "none",
+        "status": "proposal for owner review"
+      }
+    },
+    {
+      "id": "F2",
+      "title": "Transfer endpoint check-then-act race (double spend)",
+      "attacker": "Insider",
+      "vector": "race condition / TOCTOU",
+      "asset": "payments balance",
+      "postures": {
+        "block": "unknown",
+        "allow": "affected",
+        "tarpit": "na",
+        "detect_approve": "unknown",
+        "deceive": "na",
+        "immune": "strong"
+      },
+      "strength": "affected",
+      "severity": "Critical",
+      "severity_note": "money movement x concurrent requests bypass the balance check",
+      "ttc": "hours",
+      "ttc_assumptions": "valid low-privilege account; balance is read then debited without a transactional guard or row lock",
+      "broke": "transfer() reads balance, then writes the debit in a separate statement with no SELECT ... FOR UPDATE or atomic conditional update; parallel requests both pass the check.",
+      "evidence": "Modeled N concurrent transfers against one balance; each sees the pre-debit balance and succeeds, overdrawing the account.",
+      "recommended_posture": "block (atomic conditional debit) + detect_approve for large transfers",
+      "antibody": {
+        "fix": "Make the debit a single atomic conditional update (UPDATE ... WHERE balance >= amount) or wrap read+write in a transaction with a row lock; reject on zero rows affected.",
+        "applied_to": "sandbox copy (never live)",
+        "result": "neutralized",
+        "mutations_tested": "higher concurrency, interleaved deposits, retry storms",
+        "new_nexus": "none",
+        "status": "proposal for owner review"
+      }
+    },
+    {
+      "id": "F3",
+      "title": "Login lacks server-side throttle (credential stuffing)",
+      "attacker": "Script-based opportunist",
+      "vector": "broken auth & session",
+      "asset": "session tokens",
+      "postures": {
+        "block": "unknown",
+        "allow": "affected",
+        "tarpit": "strong",
+        "detect_approve": "unknown",
+        "deceive": "na",
+        "immune": "unknown"
+      },
+      "strength": "unknown",
+      "severity": "High",
+      "severity_note": "account takeover if a lockout/throttle is truly absent — needs a live run to confirm",
+      "ttc": "hours",
+      "ttc_assumptions": "opportunist with a stuffing list; assumes no distributed lockout — unconfirmed without staging access",
+      "broke": "No lockout or throttle visible in the login handler source, but the rate limiter may run at the gateway (not in this repo).",
+      "evidence": "Source review only; could not confirm gateway behavior at analyze depth.",
+      "recommended_posture": "tarpit + detect_approve on repeated failures per identity"
+    }
+  ],
+  "hardening": {
+    "now": "F2 atomic debit (critical, small diff). F1 server-side total quota (high, medium diff).",
+    "next": "F1 anomaly alert on offset breadth. F3 confirm/enable server-side login throttle.",
+    "later": "Extend quota model to all list endpoints; add canary rows to the user table (deceive)."
+  },
+  "residual": {
+    "unknown": [
+      "F3 login throttle — needs a live run against staging to confirm gateway behavior.",
+      "Queue consumers and admin console — no source provided; untested."
+    ],
+    "assumptions": [
+      "TTC assumes the adaptive agent automates the manual tedium (pagination, retries).",
+      "Insider holds a valid low-privilege account.",
+      "No WAF/gateway control beyond what the repo shows."
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "attackers": [
+    "Script-based opportunist",
+    "Known-vuln exploiter",
+    "Insider",
+    "Adaptive AI adversary",
+    "Supply-chain attacker"
+  ],
+  "assets": [
+    { "name": "user table (PII)", "value": "high" },
+    { "name": "payments", "value": "critical" },
+    { "name": "session tokens", "value": "high" }
+  ],
+  "paths": [
+    {
+      "entry": "GET /api/users",
+      "asset": "user table (PII)",
+      "boundary": "auth required (JWT)",
+      "vectors": ["rate-limit / quota evasion", "IDOR"],
+      "attackers": ["Adaptive AI adversary", "Insider"],
+      "reachability": "high"
+    },
+    {
+      "entry": "POST /api/transfer",
+      "asset": "payments",
+      "boundary": "auth + MFA",
+      "vectors": ["race condition / TOCTOU", "broken auth & session"],
+      "attackers": ["Insider", "Adaptive AI adversary"],
+      "reachability": "medium"
+    },
+    {
+      "entry": "POST /api/login",
+      "asset": "session tokens",
+      "boundary": "unauthenticated -> authenticated",
+      "vectors": ["broken auth & session", "rate-limit / quota evasion"],
+      "reachability": "high"
+    }
+  ]
+}
