@@ -39,6 +39,42 @@ attacks get covered first, and as you raise the budget the novel mutation/chain 
   *neutralized / partial / displaced*, delivered as a **proposal** for you to review.
 - **A hardening timeline** — fixes ordered by severity-per-effort into Now / Next / Later.
 
+## Visualized workflow
+
+A single request fans out into many timelines and collapses back into one actionable report. Full
+set of diagrams — the nexus matrix, the adaptive mutation loop, the antibody loop, and the
+script data flow — in **[docs/WORKFLOW.md](docs/WORKFLOW.md)** (renders on GitHub).
+
+```mermaid
+flowchart LR
+    U(["red-team my repo"]) --> MAP["① MAP<br/>surface.json"]
+    MAP --> BRANCH["② BRANCH<br/>generate_timelines.py --count N"]
+    BRANCH --> RUN["③ RUN<br/>analyze · harness · live"]
+    RUN --> SURVEIL["④ SURVEIL<br/>strength · severity · TTC"]
+    SURVEIL --> IMMUNIZE["⑤ IMMUNIZE<br/>antibody + re-challenge"]
+    IMMUNIZE --> REPORT(["forge.py → report.md<br/>heatmap · findings · plan"])
+```
+
+## Efficiency — and why it works on any repo
+
+The skill operates on a **surface map** (an abstraction of endpoints, trust boundaries, and assets),
+not on language-specific parsing — so the same tool serves a Kotlin, Python, Go, Node, or Rust repo.
+The helper scripts are **Python 3.8+ standard library only**: zero dependencies, no network,
+deterministic.
+
+Measured by [`tools/benchmark.py`](tools/benchmark.py) (reproducible — run it yourself):
+
+- A **100-endpoint** surface enumerates and ranks **21,000 attack timelines in ~34 ms**; enumeration
+  is never the bottleneck.
+- Ranking is by severity, so the default budget `N = 6` spends itself entirely on the **six
+  most-severe direct attacks** — effort always buys the most dangerous timeline next, and raising
+  `N` adds mutations then chains in strict priority order.
+- Beyond-budget scenarios persist in `overflow`, so raising `N` later **resumes** instead of
+  restarting.
+
+Full tables, the exact scaling formula, and the honesty caveat (no fabricated detection-rate claims)
+in **[docs/EFFICIENCY.md](docs/EFFICIENCY.md)**.
+
 ## Repository layout
 
 ```
@@ -48,12 +84,17 @@ nexus-forge/                     # the repo
 ├── SECURITY.md                  # responsible-use policy + the "Sacred Timeline" rules
 ├── CONTRIBUTING.md
 ├── docs/
-│   └── ARCHITECTURE.md          # mental model, the 5 phases, data flow, why skill vs. scripts
+│   ├── ARCHITECTURE.md          # mental model, the 5 phases, data flow, why skill vs. scripts
+│   ├── WORKFLOW.md              # Mermaid diagrams of the whole engagement (renders on GitHub)
+│   └── EFFICIENCY.md            # measured scaling + budget/coverage model (reproducible)
 ├── examples/
 │   ├── surface.example.json     # sample Phase-1 surface map (input to generate_timelines.py)
 │   └── verdicts.example.json    # sample Phase-3–5 verdicts (input to forge.py)
+├── tools/
+│   └── benchmark.py             # reproduces the numbers in docs/EFFICIENCY.md
 ├── tests/
-│   └── test_smoke.py            # stdlib-only smoke tests for both scripts
+│   ├── test_smoke.py            # stdlib-only smoke tests for both scripts
+│   └── test_benchmark.py        # guards the benchmark + the scaling formula
 └── nexus-forge/                 # ◀── the installable skill (drop this dir into .claude/skills/)
     ├── SKILL.md                 # the skill definition Claude reads
     ├── references/
